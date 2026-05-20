@@ -82,6 +82,10 @@ export function SidebarModulesSection({
         title: t('Playground'),
         description: t('Experiment with prompts and models in real time.'),
       },
+      ai_workspace: {
+        title: t('AI Workspace'),
+        description: t('Built-in chat, image understanding, and image tools.'),
+      },
       chat: {
         title: t('Chat'),
         description: t('Access previous conversations and start new ones.'),

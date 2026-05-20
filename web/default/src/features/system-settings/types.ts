@@ -69,6 +69,12 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  AIWorkspaceEnabled: boolean
+  AIWorkspaceBaseURL: string
+  AIWorkspaceDefaultChatModel: string
+  AIWorkspaceDefaultVisionModel: string
+  AIWorkspaceDefaultImageModel: string
+  AIWorkspaceDefaultImageEditModel: string
 }
 
 export type AuthSettings = {

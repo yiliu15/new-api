@@ -102,8 +102,14 @@ func GetStatus(c *gin.Context) {
 		"faq_enabled":           cs.FAQEnabled,
 
 		// 模块管理配置
-		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
-		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
+		"HeaderNavModules":                 common.OptionMap["HeaderNavModules"],
+		"SidebarModulesAdmin":              common.OptionMap["SidebarModulesAdmin"],
+		"AIWorkspaceEnabled":               common.OptionMap["AIWorkspaceEnabled"] == "true",
+		"AIWorkspaceBaseURL":               common.OptionMap["AIWorkspaceBaseURL"],
+		"AIWorkspaceDefaultChatModel":      common.OptionMap["AIWorkspaceDefaultChatModel"],
+		"AIWorkspaceDefaultVisionModel":    common.OptionMap["AIWorkspaceDefaultVisionModel"],
+		"AIWorkspaceDefaultImageModel":     common.OptionMap["AIWorkspaceDefaultImageModel"],
+		"AIWorkspaceDefaultImageEditModel": common.OptionMap["AIWorkspaceDefaultImageEditModel"],
 
 		"oidc_enabled":                system_setting.GetOIDCSettings().Enabled,
 		"oidc_client_id":              system_setting.GetOIDCSettings().ClientId,

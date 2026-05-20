@@ -28,6 +28,7 @@ import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { AIWorkspaceSection } from './ai-workspace-section'
 
 const SITE_SECTIONS = [
   {
@@ -93,6 +94,25 @@ const SITE_SECTIONS = [
         />
       )
     },
+  },
+  {
+    id: 'ai-workspace',
+    titleKey: 'AI Workspace',
+    descriptionKey: 'Configure the built-in AI chat and image workspace',
+    build: (settings: SiteSettings) => (
+      <AIWorkspaceSection
+        defaultValues={{
+          AIWorkspaceEnabled: settings.AIWorkspaceEnabled,
+          AIWorkspaceBaseURL: settings.AIWorkspaceBaseURL,
+          AIWorkspaceDefaultChatModel: settings.AIWorkspaceDefaultChatModel,
+          AIWorkspaceDefaultVisionModel:
+            settings.AIWorkspaceDefaultVisionModel,
+          AIWorkspaceDefaultImageModel: settings.AIWorkspaceDefaultImageModel,
+          AIWorkspaceDefaultImageEditModel:
+            settings.AIWorkspaceDefaultImageEditModel,
+        }}
+      />
+    ),
   },
 ] as const
 

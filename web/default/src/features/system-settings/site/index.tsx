@@ -36,6 +36,12 @@ const defaultSiteSettings: SiteSettings = {
   'legal.privacy_policy': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
+  AIWorkspaceEnabled: false,
+  AIWorkspaceBaseURL: '',
+  AIWorkspaceDefaultChatModel: '',
+  AIWorkspaceDefaultVisionModel: '',
+  AIWorkspaceDefaultImageModel: '',
+  AIWorkspaceDefaultImageEditModel: '',
 }
 
 export function SiteSettings() {
