@@ -18,9 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ChevronDown,
   ImagePlus,
   KeyRound,
   Loader2,
+  Settings2,
   Send,
   Sparkles,
   Trash2,
@@ -286,6 +288,7 @@ export function AIWorkspace() {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [messages, setMessages] = useState<WorkspaceMessage[]>([])
   const [isSending, setIsSending] = useState(false)
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false)
 
   useEffect(() => {
     if (!chatModel && typeof status?.AIWorkspaceDefaultChatModel === 'string') {
@@ -681,6 +684,94 @@ export function AIWorkspace() {
     { label: t('Image edit model'), value: editModel, setter: setEditModel },
   ]
 
+  const resolvedPreviewMode = resolveMode(mode, input, attachments.length > 0)
+  const resolvedPreviewModel =
+    selectedModelForMode(resolvedPreviewMode) || imageModel || chatModel
+  const modeLabel =
+    mode === 'auto'
+      ? t('Auto')
+      : t(
+          mode === 'edit'
+            ? 'Edit image'
+            : mode === 'image'
+              ? 'Generate image'
+              : mode === 'vision'
+                ? 'Image understanding'
+                : 'Chat'
+        )
+
+  const workspaceControls = (
+    <>
+      <div className='grid gap-2 md:grid-cols-[minmax(180px,1fr)_minmax(150px,0.7fr)_auto] lg:w-[680px]'>
+        <div className='relative'>
+          <KeyRound className='text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2' />
+          <Input
+            type='password'
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder={t('Paste your New API key')}
+            className='pl-8'
+          />
+        </div>
+        <select
+          value={mode}
+          onChange={(event) => setMode(event.target.value as WorkspaceMode)}
+          className='border-input bg-background h-8 rounded-lg border px-2 text-sm'
+        >
+          <option value='auto'>{t('Auto')}</option>
+          <option value='chat'>{t('Chat')}</option>
+          <option value='vision'>{t('Image understanding')}</option>
+          <option value='image'>{t('Generate image')}</option>
+          <option value='edit'>{t('Edit image')}</option>
+        </select>
+        <Button
+          variant='outline'
+          onClick={() => setMessages([])}
+          disabled={messages.length === 0 || isSending}
+          className='gap-2'
+        >
+          <Trash2 className='h-4 w-4' />
+          {t('Clear')}
+        </Button>
+      </div>
+
+      <div className='mt-3 grid gap-2 md:grid-cols-5'>
+        {modelFields.map(({ label, value, setter }) => (
+          <label key={label} className='space-y-1'>
+            <span className='text-muted-foreground text-xs'>{label}</span>
+            <input
+              list='ai-workspace-models'
+              value={value}
+              onChange={(event) => setter(event.target.value)}
+              className='border-input bg-background h-8 w-full rounded-lg border px-2 text-sm'
+              placeholder={modelsLoading ? t('Loading...') : t('Model name')}
+            />
+          </label>
+        ))}
+        <label className='space-y-1'>
+          <span className='text-muted-foreground text-xs'>
+            {t('Image size')}
+          </span>
+          <select
+            value={imageSize}
+            onChange={(event) => setImageSize(event.target.value as ImageSize)}
+            className='border-input bg-background h-8 w-full rounded-lg border px-2 text-sm'
+          >
+            <option value='auto'>{t('Auto')}</option>
+            <option value='1024x1024'>1024x1024</option>
+            <option value='1024x1536'>1024x1536</option>
+            <option value='1536x1024'>1536x1024</option>
+          </select>
+        </label>
+        <datalist id='ai-workspace-models'>
+          {models.map((model) => (
+            <option key={model} value={model} />
+          ))}
+        </datalist>
+      </div>
+    </>
+  )
+
   if (statusLoading) {
     return (
       <div className='flex h-full items-center justify-center'>
@@ -712,82 +803,52 @@ export function AIWorkspace() {
             <div className='bg-primary/10 text-primary flex h-9 w-9 items-center justify-center rounded-lg'>
               <Sparkles className='h-4 w-4' />
             </div>
-            <div>
+            <div className='min-w-0 flex-1'>
               <h1 className='text-lg font-semibold'>{t('AI Workspace')}</h1>
               <p className='text-muted-foreground text-xs'>
                 {t('Use your own New API key for chat and image tasks.')}
               </p>
             </div>
-          </div>
-
-          <div className='grid gap-2 md:grid-cols-[minmax(180px,1fr)_minmax(150px,0.7fr)_auto] lg:w-[680px]'>
-            <div className='relative'>
-              <KeyRound className='text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2' />
-              <Input
-                type='password'
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={t('Paste your New API key')}
-                className='pl-8'
-              />
-            </div>
-            <select
-              value={mode}
-              onChange={(event) => setMode(event.target.value as WorkspaceMode)}
-              className='border-input bg-background h-8 rounded-lg border px-2 text-sm'
-            >
-              <option value='auto'>{t('Auto')}</option>
-              <option value='chat'>{t('Chat')}</option>
-              <option value='vision'>{t('Image understanding')}</option>
-              <option value='image'>{t('Generate image')}</option>
-              <option value='edit'>{t('Edit image')}</option>
-            </select>
             <Button
+              type='button'
               variant='outline'
-              onClick={() => setMessages([])}
-              disabled={messages.length === 0 || isSending}
-              className='gap-2'
+              size='sm'
+              onClick={() => setMobileSettingsOpen((open) => !open)}
+              className='gap-2 md:hidden'
             >
-              <Trash2 className='h-4 w-4' />
-              {t('Clear')}
+              <Settings2 className='h-4 w-4' />
+              {t('Settings')}
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 transition-transform',
+                  mobileSettingsOpen && 'rotate-180'
+                )}
+              />
             </Button>
           </div>
+
+          <div className='hidden md:block'>{workspaceControls}</div>
         </div>
 
-        <div className='mt-3 grid gap-2 md:grid-cols-5'>
-          {modelFields.map(({ label, value, setter }) => (
-            <label key={label} className='space-y-1'>
-              <span className='text-muted-foreground text-xs'>{label}</span>
-              <input
-                list='ai-workspace-models'
-                value={value}
-                onChange={(event) => setter(event.target.value)}
-                className='border-input bg-background h-8 w-full rounded-lg border px-2 text-sm'
-                placeholder={modelsLoading ? t('Loading...') : t('Model name')}
-              />
-            </label>
-          ))}
-          <label className='space-y-1'>
-            <span className='text-muted-foreground text-xs'>
-              {t('Image size')}
+        <div className='mt-3 flex flex-wrap gap-2 md:hidden'>
+          <span className='bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs'>
+            {modeLabel}
+          </span>
+          <span className='bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs'>
+            {imageSize}
+          </span>
+          {resolvedPreviewModel && (
+            <span className='bg-muted text-muted-foreground max-w-full truncate rounded-full px-2.5 py-1 text-xs'>
+              {resolvedPreviewModel}
             </span>
-            <select
-              value={imageSize}
-              onChange={(event) => setImageSize(event.target.value as ImageSize)}
-              className='border-input bg-background h-8 w-full rounded-lg border px-2 text-sm'
-            >
-              <option value='auto'>{t('Auto')}</option>
-              <option value='1024x1024'>1024x1024</option>
-              <option value='1024x1536'>1024x1536</option>
-              <option value='1536x1024'>1536x1024</option>
-            </select>
-          </label>
-          <datalist id='ai-workspace-models'>
-            {models.map((model) => (
-              <option key={model} value={model} />
-            ))}
-          </datalist>
+          )}
         </div>
+
+        {mobileSettingsOpen && (
+          <div className='bg-muted/30 mt-3 rounded-xl border p-3 md:hidden'>
+            {workspaceControls}
+          </div>
+        )}
       </div>
 
       <div ref={scrollRef} className='min-h-0 flex-1 overflow-y-auto px-3 py-5'>
