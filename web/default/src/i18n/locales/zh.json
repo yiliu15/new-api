@@ -21,6 +21,7 @@
     "Image edited successfully.": "图片编辑成功。",
     "Image generated successfully.": "图片生成成功。",
     "Image model": "生图模型",
+    "Image size": "图片尺寸",
     "Image size must be under 10MB": "图片大小不能超过 10MB",
     "Image understanding": "图片理解",
     "Leave empty to use the current New API site URL.": "留空则使用当前 New API 网站地址。",

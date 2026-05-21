@@ -41,6 +41,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
 type WorkspaceMode = 'auto' | 'chat' | 'vision' | 'image' | 'edit'
+type ImageSize = 'auto' | '1024x1024' | '1024x1536' | '1536x1024'
 type MessageRole = 'user' | 'assistant'
 type MessageStatus = 'sending' | 'streaming' | 'done' | 'error'
 
@@ -77,24 +78,50 @@ const STORAGE_KEYS = {
   visionModel: 'ai_workspace_vision_model',
   imageModel: 'ai_workspace_image_model',
   editModel: 'ai_workspace_image_edit_model',
+  imageSize: 'ai_workspace_image_size',
   mode: 'ai_workspace_mode',
 }
 
+const IMAGE_SIZE_OPTIONS: ImageSize[] = [
+  'auto',
+  '1024x1024',
+  '1024x1536',
+  '1536x1024',
+]
+
 const IMAGE_EDIT_KEYWORDS = [
+  '增加',
+  '添加',
+  '加上',
+  '加入',
   '编辑',
   '修改',
   '换成',
   '改成',
+  '改为',
   '去掉',
   '移除',
   '删除',
   '背景',
   '替换',
+  '水印',
+  '贴纸',
+  '文字',
+  '标志',
+  'logo',
+  '相机',
+  '今日相机',
+  'add',
   'edit',
   'modify',
   'remove',
   'replace',
   'background',
+  'watermark',
+  'sticker',
+  'text',
+  'logo',
+  'camera',
 ]
 
 const IMAGE_GENERATION_KEYWORDS = [
@@ -122,6 +149,13 @@ function setLocalStorageValue(key: string, value: string) {
   } else {
     window.localStorage.removeItem(key)
   }
+}
+
+function getStoredImageSize(): ImageSize {
+  const value = getLocalStorageValue(STORAGE_KEYS.imageSize)
+  return IMAGE_SIZE_OPTIONS.includes(value as ImageSize)
+    ? (value as ImageSize)
+    : 'auto'
 }
 
 function normalizeBaseUrl(value?: unknown) {
@@ -247,6 +281,7 @@ export function AIWorkspace() {
   const [editModel, setEditModel] = useState(() =>
     getLocalStorageValue(STORAGE_KEYS.editModel)
   )
+  const [imageSize, setImageSize] = useState<ImageSize>(getStoredImageSize)
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [messages, setMessages] = useState<WorkspaceMessage[]>([])
@@ -304,6 +339,10 @@ export function AIWorkspace() {
   useEffect(() => {
     setLocalStorageValue(STORAGE_KEYS.editModel, editModel.trim())
   }, [editModel])
+
+  useEffect(() => {
+    setLocalStorageValue(STORAGE_KEYS.imageSize, imageSize)
+  }, [imageSize])
 
   useEffect(() => {
     setLocalStorageValue(STORAGE_KEYS.mode, mode)
@@ -522,7 +561,7 @@ export function AIWorkspace() {
         model: imageModel,
         prompt,
         n: 1,
-        size: '1024x1024',
+        size: imageSize,
       }),
     })
 
@@ -555,7 +594,7 @@ export function AIWorkspace() {
     formData.append('model', model)
     formData.append('prompt', prompt)
     formData.append('n', '1')
-    formData.append('size', '1024x1024')
+    formData.append('size', imageSize)
     formData.append('image', currentAttachments[0].file)
 
     const response = await fetch(`${baseUrl}/v1/images/edits`, {
@@ -715,7 +754,7 @@ export function AIWorkspace() {
           </div>
         </div>
 
-        <div className='mt-3 grid gap-2 md:grid-cols-4'>
+        <div className='mt-3 grid gap-2 md:grid-cols-5'>
           {modelFields.map(({ label, value, setter }) => (
             <label key={label} className='space-y-1'>
               <span className='text-muted-foreground text-xs'>{label}</span>
@@ -728,6 +767,21 @@ export function AIWorkspace() {
               />
             </label>
           ))}
+          <label className='space-y-1'>
+            <span className='text-muted-foreground text-xs'>
+              {t('Image size')}
+            </span>
+            <select
+              value={imageSize}
+              onChange={(event) => setImageSize(event.target.value as ImageSize)}
+              className='border-input bg-background h-8 w-full rounded-lg border px-2 text-sm'
+            >
+              <option value='auto'>{t('Auto')}</option>
+              <option value='1024x1024'>1024x1024</option>
+              <option value='1024x1536'>1024x1536</option>
+              <option value='1536x1024'>1536x1024</option>
+            </select>
+          </label>
           <datalist id='ai-workspace-models'>
             {models.map((model) => (
               <option key={model} value={model} />

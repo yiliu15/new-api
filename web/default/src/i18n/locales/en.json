@@ -123,6 +123,7 @@
     "Image edited successfully.": "Image edited successfully.",
     "Image generated successfully.": "Image generated successfully.",
     "Image model": "Image model",
+    "Image size": "Image size",
     "Image size must be under 10MB": "Image size must be under 10MB",
     "Image understanding": "Image understanding",
     "Leave empty to use the current New API site URL.": "Leave empty to use the current New API site URL.",
