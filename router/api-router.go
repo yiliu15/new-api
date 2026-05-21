@@ -61,6 +61,14 @@ func SetApiRouter(router *gin.Engine) {
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
 
+		aiWorkspaceRoute := apiRouter.Group("/ai-workspace")
+		aiWorkspaceRoute.Use(middleware.UserAuth())
+		{
+			aiWorkspaceRoute.POST("/image-tasks", controller.CreateAIWorkspaceImageTask)
+			aiWorkspaceRoute.GET("/image-tasks/:id", controller.GetAIWorkspaceImageTask)
+			aiWorkspaceRoute.POST("/image-tasks/:id/cancel", controller.CancelAIWorkspaceImageTask)
+		}
+
 		userRoute := apiRouter.Group("/user")
 		{
 			userRoute.POST("/register", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Register)

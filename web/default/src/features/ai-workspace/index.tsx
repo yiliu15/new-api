@@ -33,11 +33,17 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { useStatus } from '@/hooks/use-status'
+import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -46,6 +52,7 @@ type WorkspaceMode = 'auto' | 'chat' | 'vision' | 'image' | 'edit'
 type ImageSize = 'auto' | '1024x1024' | '1024x1536' | '1536x1024'
 type MessageRole = 'user' | 'assistant'
 type MessageStatus = 'sending' | 'streaming' | 'done' | 'error'
+type ImageTaskStatus = 'pending' | 'running' | 'success' | 'failed' | 'canceled'
 
 type Attachment = {
   id: string
@@ -74,6 +81,20 @@ type ChatRequestMessage = {
   content: ChatMessageContent
 }
 
+type ImageTask = {
+  id: string
+  type: 'generation' | 'edit'
+  status: ImageTaskStatus
+  images?: string[]
+  error?: string
+}
+
+type ApiResponse<T> = {
+  success: boolean
+  message?: string
+  data?: T
+}
+
 const STORAGE_KEYS = {
   apiKey: 'ai_workspace_api_key',
   chatModel: 'ai_workspace_chat_model',
@@ -82,6 +103,7 @@ const STORAGE_KEYS = {
   editModel: 'ai_workspace_image_edit_model',
   imageSize: 'ai_workspace_image_size',
   mode: 'ai_workspace_mode',
+  messages: 'ai_workspace_messages',
 }
 
 const IMAGE_SIZE_OPTIONS: ImageSize[] = [
@@ -160,6 +182,30 @@ function getStoredImageSize(): ImageSize {
     : 'auto'
 }
 
+function getStoredMessages(): WorkspaceMessage[] {
+  const value = getLocalStorageValue(STORAGE_KEYS.messages)
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value) as WorkspaceMessage[]
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter(
+        (message) =>
+          (message.role === 'user' || message.role === 'assistant') &&
+          typeof message.content === 'string'
+      )
+      .slice(-50)
+      .map((message) => ({
+        id: message.id || makeId('stored'),
+        role: message.role,
+        content: message.content,
+        status: message.status === 'error' ? 'error' : 'done',
+      }))
+  } catch {
+    return []
+  }
+}
+
 function normalizeBaseUrl(value?: unknown) {
   const raw = typeof value === 'string' ? value.trim() : ''
   const base =
@@ -184,14 +230,6 @@ function isSupportedImage(file: File) {
   return ['image/jpeg', 'image/png', 'image/webp'].includes(file.type)
 }
 
-function extractImageUrl(item: Record<string, unknown>) {
-  if (typeof item.url === 'string') return item.url
-  if (typeof item.b64_json === 'string') {
-    return `data:image/png;base64,${item.b64_json}`
-  }
-  return ''
-}
-
 function extractChatContent(data: unknown) {
   const record = data as {
     choices?: Array<{ message?: { content?: string }; text?: string }>
@@ -201,6 +239,10 @@ function extractChatContent(data: unknown) {
     record?.choices?.[0]?.text ||
     ''
   )
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function readSseContent(buffer: string) {
@@ -253,6 +295,7 @@ export function AIWorkspace() {
   const { auth } = useAuthStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const canceledTaskIdsRef = useRef(new Set<string>())
 
   const baseUrl = useMemo(
     () => normalizeBaseUrl(status?.AIWorkspaceBaseURL),
@@ -286,9 +329,15 @@ export function AIWorkspace() {
   const [imageSize, setImageSize] = useState<ImageSize>(getStoredImageSize)
   const [input, setInput] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [messages, setMessages] = useState<WorkspaceMessage[]>([])
+  const [messages, setMessages] =
+    useState<WorkspaceMessage[]>(getStoredMessages)
   const [isSending, setIsSending] = useState(false)
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [activeTaskAssistantId, setActiveTaskAssistantId] = useState<
+    string | null
+  >(null)
 
   useEffect(() => {
     if (!chatModel && typeof status?.AIWorkspaceDefaultChatModel === 'string') {
@@ -350,6 +399,22 @@ export function AIWorkspace() {
   useEffect(() => {
     setLocalStorageValue(STORAGE_KEYS.mode, mode)
   }, [mode])
+
+  useEffect(() => {
+    const storedMessages = messages
+      .filter((message) => message.content.trim())
+      .slice(-50)
+      .map((message) => ({
+        id: message.id,
+        role: message.role,
+        content: message.content,
+        status: message.status === 'error' ? 'error' : 'done',
+      }))
+    setLocalStorageValue(
+      STORAGE_KEYS.messages,
+      storedMessages.length ? JSON.stringify(storedMessages) : ''
+    )
+  }, [messages])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -427,6 +492,13 @@ export function AIWorkspace() {
     setMessages((current) =>
       current.map((message) => (message.id === id ? updater(message) : message))
     )
+  }
+
+  const unwrapTaskResponse = (response: ApiResponse<ImageTask>) => {
+    if (!response.success || !response.data) {
+      throw new Error(response.message || t('Request failed'))
+    }
+    return response.data
   }
 
   const handleFiles = async (files: FileList | null) => {
@@ -552,34 +624,78 @@ export function AIWorkspace() {
     }))
   }
 
+  const waitForImageTask = async (
+    taskId: string,
+    assistantId: string,
+    successMessage: string,
+    emptyMessage: string
+  ) => {
+    while (true) {
+      if (canceledTaskIdsRef.current.has(taskId)) return
+      await delay(2500)
+      if (canceledTaskIdsRef.current.has(taskId)) return
+
+      const response = await api.get<ApiResponse<ImageTask>>(
+        `/api/ai-workspace/image-tasks/${taskId}`,
+        {
+          disableDuplicate: true,
+          skipBusinessError: true,
+        } as Record<string, unknown>
+      )
+      const task = unwrapTaskResponse(response.data)
+
+      if (task.status === 'pending' || task.status === 'running') continue
+
+      setActiveTaskId(null)
+      setActiveTaskAssistantId(null)
+
+      if (task.status === 'canceled') {
+        updateMessage(assistantId, (message) => ({
+          ...message,
+          content: t('Stopped.'),
+          status: 'done',
+        }))
+        return
+      }
+
+      if (task.status === 'failed') {
+        throw new Error(task.error || t('Request failed'))
+      }
+
+      const images = task.images || []
+      updateMessage(assistantId, (message) => ({
+        ...message,
+        content: images.length ? successMessage : emptyMessage,
+        generatedImages: images,
+        status: images.length ? 'done' : 'error',
+      }))
+      return
+    }
+  }
+
   const sendImageGeneration = async (prompt: string, assistantId: string) => {
     if (!imageModel) throw new Error(t('Please select an image model first'))
-    const response = await fetch(`${baseUrl}/v1/images/generations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey.trim()}`,
-      },
-      body: JSON.stringify({
+    const response = await api.post<ApiResponse<ImageTask>>(
+      '/api/ai-workspace/image-tasks',
+      {
+        type: 'generation',
+        api_key: apiKey.trim(),
         model: imageModel,
         prompt,
-        n: 1,
         size: imageSize,
-      }),
-    })
-
-    if (!response.ok) throw new Error(await response.text())
-
-    const data = (await response.json()) as { data?: Record<string, unknown>[] }
-    const images = (data.data || []).map(extractImageUrl).filter(Boolean)
-    updateMessage(assistantId, (message) => ({
-      ...message,
-      content: images.length
-        ? t('Image generated successfully.')
-        : t('No image was returned by the model.'),
-      generatedImages: images,
-      status: images.length ? 'done' : 'error',
-    }))
+      },
+      { skipBusinessError: true } as Record<string, unknown>
+    )
+    const task = unwrapTaskResponse(response.data)
+    setActiveTaskId(task.id)
+    setActiveTaskAssistantId(assistantId)
+    canceledTaskIdsRef.current.delete(task.id)
+    await waitForImageTask(
+      task.id,
+      assistantId,
+      t('Image generated successfully.'),
+      t('No image was returned by the model.')
+    )
   }
 
   const sendImageEdit = async (
@@ -594,32 +710,54 @@ export function AIWorkspace() {
     }
 
     const formData = new FormData()
+    formData.append('type', 'edit')
+    formData.append('api_key', apiKey.trim())
     formData.append('model', model)
     formData.append('prompt', prompt)
-    formData.append('n', '1')
     formData.append('size', imageSize)
     formData.append('image', currentAttachments[0].file)
 
-    const response = await fetch(`${baseUrl}/v1/images/edits`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
-      },
-      body: formData,
-    })
+    const response = await api.post<ApiResponse<ImageTask>>(
+      '/api/ai-workspace/image-tasks',
+      formData,
+      { skipBusinessError: true } as Record<string, unknown>
+    )
+    const task = unwrapTaskResponse(response.data)
+    setActiveTaskId(task.id)
+    setActiveTaskAssistantId(assistantId)
+    canceledTaskIdsRef.current.delete(task.id)
+    await waitForImageTask(
+      task.id,
+      assistantId,
+      t('Image edited successfully.'),
+      t('No edited image was returned by the model.')
+    )
+  }
 
-    if (!response.ok) throw new Error(await response.text())
-
-    const data = (await response.json()) as { data?: Record<string, unknown>[] }
-    const images = (data.data || []).map(extractImageUrl).filter(Boolean)
-    updateMessage(assistantId, (message) => ({
-      ...message,
-      content: images.length
-        ? t('Image edited successfully.')
-        : t('No edited image was returned by the model.'),
-      generatedImages: images,
-      status: images.length ? 'done' : 'error',
-    }))
+  const handleCancelTask = async () => {
+    if (!activeTaskId) return
+    const taskId = activeTaskId
+    const assistantId = activeTaskAssistantId
+    canceledTaskIdsRef.current.add(taskId)
+    setActiveTaskId(null)
+    setActiveTaskAssistantId(null)
+    setIsSending(false)
+    if (assistantId) {
+      updateMessage(assistantId, (message) => ({
+        ...message,
+        content: t('Stopped.'),
+        status: 'done',
+      }))
+    }
+    try {
+      await api.post(
+        `/api/ai-workspace/image-tasks/${taskId}/cancel`,
+        {},
+        { skipBusinessError: true } as Record<string, unknown>
+      )
+    } catch {
+      // The UI is already released; the task may have finished just before cancel.
+    }
   }
 
   const handleSend = async () => {
@@ -663,6 +801,8 @@ export function AIWorkspace() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : t('Request failed')
+      setActiveTaskId(null)
+      setActiveTaskAssistantId(null)
       updateMessage(assistantId, (current) => ({
         ...current,
         content: message,
@@ -914,18 +1054,18 @@ export function AIWorkspace() {
                     message.generatedImages.length > 0 && (
                       <div className='grid gap-2 sm:grid-cols-2'>
                         {message.generatedImages.map((image) => (
-                          <a
+                          <button
                             key={image}
-                            href={image}
-                            target='_blank'
-                            rel='noopener noreferrer'
+                            type='button'
+                            onClick={() => setPreviewImage(image)}
+                            className='group bg-background/40 focus-visible:ring-ring rounded-lg text-left outline-none transition hover:opacity-95 focus-visible:ring-2'
                           >
                             <img
                               src={image}
                               alt=''
                               className='max-h-[420px] rounded-lg object-contain'
                             />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -966,7 +1106,14 @@ export function AIWorkspace() {
             </div>
           )}
 
-          <div className='grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2'>
+          <div
+            className={cn(
+              'grid items-end gap-2',
+              activeTaskId
+                ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto]'
+                : 'grid-cols-[auto_minmax(0,1fr)_auto]'
+            )}
+          >
             <input
               ref={fileInputRef}
               type='file'
@@ -1005,6 +1152,17 @@ export function AIWorkspace() {
             </div>
             <Button
               type='button'
+              variant='destructive'
+              size='icon-lg'
+              onClick={handleCancelTask}
+              disabled={!activeTaskId}
+              title={t('Stop')}
+              className={cn(!activeTaskId && 'hidden')}
+            >
+              <X className='h-4 w-4' />
+            </Button>
+            <Button
+              type='button'
               size='icon-lg'
               onClick={handleSend}
               disabled={isSending || (!input.trim() && attachments.length === 0)}
@@ -1021,6 +1179,24 @@ export function AIWorkspace() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(previewImage)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewImage(null)
+        }}
+      >
+        <DialogContent className='max-h-[94vh] max-w-[96vw] p-2 sm:max-w-[96vw]'>
+          <DialogTitle className='sr-only'>{t('Preview image')}</DialogTitle>
+          {previewImage && (
+            <img
+              src={previewImage}
+              alt=''
+              className='max-h-[88vh] w-full rounded-lg object-contain'
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
